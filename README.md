@@ -4,6 +4,8 @@ Amazon Relational Database Service (Amazon RDS) makes it easy to set up, operate
 
 The ISV Plug 'n Play program consists of a packaged bundle that ISV Startups can leverage to accelerate the creation of a new RDS enviornment using baked in best practices.
 
+## Architecture overview
+Here is a diagram of our architecture and a brief summary of what you are going to set up.
 
 ![alt text](https://github.com/aws-samples/amazon-isv-plug-n-play/blob/main/ISVPnPRefArch.jpg?raw=true)
 
