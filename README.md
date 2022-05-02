@@ -19,7 +19,7 @@ The sample CloudFormation templates provision the network infrastructure and all
 
 The stacks are integrated using exported output values. Using three different CloudFormation stacks instead of one nested stack gives you some flexibility. For example, you can choose to deploy the VPC and bastion host CloudFormation stacks once and Aurora PostgreSQL DB cluster CloudFormation stack multiple times in an AWS Region.
 
-## Best practices
+## Best practices, prerequisites, and setup instructions
 For best practices incorporated in the sample AWS CloudFormation samples, prerequisites, and set up instructions, refer the following document.
 
 [Deploy an Amazon Aurora PostgreSQL DB cluster with recommended best practices using AWS CloudFormation](https://github.com/aws-samples/amazon-isv-plug-n-play/blob/main/Instructions/Deploy%20an%20Amazon%20Aurora%20PostgreSQL%20DB%20cluster%20with%20recommended%20best%20practices%20using%20AWS%20CloudFormation.pdf)
