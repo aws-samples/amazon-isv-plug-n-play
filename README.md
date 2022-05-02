@@ -1,2 +1,2 @@
-![alt text](https://github.com/awsjohnyen/amazon-isv-plug-n-play/blob/main/ISV PnP Reference Architecture.png?raw=true)
+![alt text](https://github.com/awsjohnyen/amazon-isv-plug-n-play/blob/main/ISVPnPReferenceArchitecture.jpg?raw=true)
 
