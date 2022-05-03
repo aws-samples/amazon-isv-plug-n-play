@@ -9,7 +9,7 @@ Here is a diagram of our architecture and a brief summary of what you are going 
 
 ![alt text](https://github.com/aws-samples/amazon-isv-plug-n-play/blob/main/ISVPnPRefArch.jpg?raw=true)
 
-The sample CloudFormation templates provision the network infrastructure and all the components shown in the architecture diagram. I broke the CloudFormation templates into the following three stacks.
+The sample CloudFormation templates provision the network infrastructure and all the components shown in the architecture diagram. The CloudFormation templates are broken into the following three stacks.
 
 1. CloudFormation template to set up VPC, subnets, route tables, internet gateway, NAT gateway, S3 gateway endpoint, AWS Secrets Manager interface endpoint, and other networking components.
     
