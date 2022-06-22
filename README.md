@@ -7,7 +7,11 @@ The ISV Plug 'n Play program consists of a packaged bundle that ISV Startups can
 ## Architecture overview
 Here is a diagram of our architecture and a brief summary of what you are going to set up.
 
-![alt text]([https://github.com/aws-samples/amazon-isv-plug-n-play/blob/main/media/Aurora%20Arch%20Diagram.png])?raw=true)
+Amazon Aurora PostgreSQL
+![alt text](https://github.com/aws-samples/amazon-isv-plug-n-play/blob/main/media/Aurora%20Arch%20Diagram.png?raw=true)
+
+Amazon RDS for PostgreSQL
+![alt text](https://github.com/aws-samples/amazon-isv-plug-n-play/blob/main/media/RDS%20PG%20Arch%20Diagram.png?raw=true)
 
 The sample CloudFormation templates provision the network infrastructure and all the components shown in the architecture diagram. The CloudFormation templates are broken into the following three stacks.
 
@@ -15,7 +19,7 @@ The sample CloudFormation templates provision the network infrastructure and all
     
 2. CloudFormation template to set up an Amazon Linux bastion host in an Auto Scaling group to connect to the Aurora PostgreSQL DB cluster.
     
-3. CloudFormation template to set up Aurora PostgreSQL DB cluster with master user password stored in AWS Secrets Manager and bootstrap the database using AWS Lambda.
+3. CloudFormation template to set up either an Aurora PostgreSQL DB cluster OR an Amazon RDS for PostgreSQL cluster with master user password stored in AWS Secrets Manager and bootstrap the database using AWS Lambda.
 
 The stacks are integrated using exported output values. Using three different CloudFormation stacks instead of one nested stack gives you some flexibility. For example, you can choose to deploy the VPC and bastion host CloudFormation stacks once and Aurora PostgreSQL DB cluster CloudFormation stack multiple times in an AWS Region.
 
