@@ -7,7 +7,7 @@ The ISV Plug 'n Play program consists of a packaged bundle that ISV Startups can
 ## Architecture overview
 Here is a diagram of our architecture and a brief summary of what you are going to set up.
 
-![alt text]([https://github.com/aws-samples/amazon-isv-plug-n-play/blob/main/media/Aurora%20Arch%20Diagram.png]?raw=true)
+![alt text]([https://github.com/aws-samples/amazon-isv-plug-n-play/blob/main/media/Aurora%20Arch%20Diagram.png])?raw=true)
 
 The sample CloudFormation templates provision the network infrastructure and all the components shown in the architecture diagram. The CloudFormation templates are broken into the following three stacks.
 
