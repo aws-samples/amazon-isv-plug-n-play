@@ -27,3 +27,5 @@ For best practices incorporated in the sample AWS CloudFormation samples, prereq
 [Deploy an Amazon RDS PostgreSQL DB cluster with recommended best practices using AWS CloudFormation](https://github.com/aws-samples/amazon-isv-plug-n-play/blob/main/Instructions/Deploy%20an%20Amazon%20RDS%20PostgreSQL%20DB%20cluster%20with%20recommended%20best%20practices%20using%20AWS%20CloudFormation.pdf)
 
 [Deploy an Amazon Aurora MySQL DB cluster with recommended best practices using AWS CloudFormation](https://github.com/aws-samples/amazon-isv-plug-n-play/blob/main/Instructions/Deploy%20an%20Amazon%20Aurora%20MySQL%20DB%20cluster%20with%20recommended%20best%20practices%20using%20AWS%20CloudFormation.pdf)
+
+[Deploy an Amazon RDS MySQL DB cluster with recommended best practices using AWS CloudFormation](https://github.com/aws-samples/amazon-isv-plug-n-play/blob/main/Instruction/Deploy%20an%20RDS%20MySQL%20DB%20with%20recommended%20best%20practices%20using%20AWS%20CloudFormation.pdf)
