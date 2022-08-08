@@ -55,22 +55,21 @@ Parameters:
   DBEngineVersion:
     Description: Select Database Engine Version
     Type: String
-    Default: 13.6
-    AllowedValues: ['11.13', '12.8', '13.6']
+    Default: 14.3
+    AllowedValues: ['11.13', '12.8', '13.6', '14.3']
      
   DBInstanceClass:
-    Default: db.r5.large
     Description: Database Instance Class
     Type: String
-    AllowedValues:
-    - db.r5.large
-    - db.r5.xlarge
-    - db.r5.2xlarge
-    - db.r5.4xlarge
-    - db.r5.8xlarge
-    - db.r5.12xlarge
-    - db.r5.16xlarge
-    - db.r5.24xlarge
+    Default: db.r6g.large
+    AllowedValues: 
+      - db.r6g.large 
+      - db.r6g.xlarge
+      - db.r6g.2xlarge
+      - db.r6g.4xlarge
+      - db.r6g.8xlarge
+      - db.r6g.12xlarge
+      - db.r6g.16xlarge
 
   DBSnapshotName:
     Description: 'Optional. DB Snapshot ID to restore database. Leave this blank if you are not restoring from a snapshot.'
@@ -199,8 +198,9 @@ Mappings:
       "family": "aurora-postgresql12"
     "13.6":
       "family": "aurora-postgresql13"
+    "14.3":
+      "family": "aurora-postgresql14"
 
-      
 ###############################################################################
 # Conditions
 ############################################################################### 
@@ -245,6 +245,7 @@ Resources:
   DBSNSTopic:
     Type: AWS::SNS::Topic
     Properties:
+      KmsMasterKeyId: 'alias/aws/sns'
       Subscription:
       - Endpoint: !Ref NotificationList
         Protocol: email
@@ -325,43 +326,6 @@ Resources:
         statement_timeout: 7200000
         search_path: '"$user",public'
 
-  AuroraKMSCMK:
-    Type: 'AWS::KMS::Key'
-    DeletionPolicy: Retain
-    Properties:
-      KeyPolicy:
-        Version: '2012-10-17'
-        Statement:
-        - Effect: Allow
-          Principal:
-            AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
-          Action: 'kms:*'
-          Resource: '*'
-        - Effect: Allow
-          Principal:
-            AWS: '*'
-          Action:
-          - 'kms:Encrypt'
-          - 'kms:Decrypt'
-          - 'kms:ReEncrypt*'
-          - 'kms:GenerateDataKey*'
-          - 'kms:CreateGrant'
-          - 'kms:ListGrants'
-          - 'kms:DescribeKey'
-          Resource: '*'
-          Condition:
-            StringEquals:
-              'kms:CallerAccount': !Ref 'AWS::AccountId'
-              'kms:ViaService': !Sub 'rds.${AWS::Region}.amazonaws.com'
-
-  AuroraKMSCMKAlias:
-    Type: 'AWS::KMS::Alias'
-    DeletionPolicy: Retain
-    DependsOn: AuroraDBCluster
-    Properties:
-      AliasName: !Sub 'alias/${AuroraDBCluster}'
-      TargetKeyId: !Ref AuroraKMSCMK
-
   AuroraMasterSecret:
     Condition: IsNotUseDBSnapshot
     Type: AWS::SecretsManager::Secret
@@ -441,7 +405,7 @@ Resources:
       DBClusterParameterGroupName: !Ref RDSDBClusterParameterGroup
       SnapshotIdentifier: !If [IsUseDBSnapshot, !Ref DBSnapshotName, !Ref "AWS::NoValue"]
       StorageEncrypted:  !If [IsUseDBSnapshot, !Ref "AWS::NoValue", true]
-      KmsKeyId: !If [IsNotUseDBSnapshot, !Ref AuroraKMSCMK, !Ref 'AWS::NoValue']
+      #KmsKeyId: !If [IsNotUseDBSnapshot, '/alias/aws/rds/', !Ref 'AWS::NoValue']
       EnableIAMDatabaseAuthentication: true
       Tags:
         -
@@ -483,7 +447,7 @@ Resources:
       DBSubnetGroupName: !Ref DBSubnetGroup
       PubliclyAccessible: false
       EnablePerformanceInsights: true
-      PerformanceInsightsKMSKeyId: !Ref AuroraKMSCMK
+      #PerformanceInsightsKMSKeyId: '/alias/aws/rds'
       PerformanceInsightsRetentionPeriod: !If [IsProd, 731, 7]
       Tags:
         -
@@ -528,7 +492,7 @@ Resources:
       DBSubnetGroupName: !Ref DBSubnetGroup
       PubliclyAccessible: false
       EnablePerformanceInsights: true
-      PerformanceInsightsKMSKeyId: !Ref AuroraKMSCMK
+      #PerformanceInsightsKMSKeyId: '/alias/aws/rds'
       PerformanceInsightsRetentionPeriod: !If [IsProd, 731, 7]
       Tags:
         -
