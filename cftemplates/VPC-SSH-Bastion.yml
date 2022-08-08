@@ -139,7 +139,6 @@ Parameters:
     Description: Allowed CIDR block in the x.x.x.x/x format for external SSH access to the bastion host
     Type: String
     
-    
   AltInitScript:
     AllowedPattern: ^http.*|^$
     ConstraintDescription: URL must begin with http
@@ -151,8 +150,6 @@ Parameters:
     Description: Optional. Specify a region specific image to use for the instance
     Type: String
     Default: ''
-    
-
         
 Mappings:
 
@@ -229,10 +226,11 @@ Conditions:
   DefaultBanner: !Equals [!Ref BastionBanner, 'default']    
   
 Resources:
-  
+
   EC2SNSTopic:
     Type: AWS::SNS::Topic
     Properties:
+      KmsMasterKeyId: 'alias/aws/sns'
       Subscription:
       - Endpoint: !Ref NotificationList
         Protocol: email
@@ -520,7 +518,7 @@ Resources:
               yum install git -y || apt-get install -y git || zypper -n install git 
               rpm --import https://repo.mysql.com/RPM-GPG-KEY-mysql-2022
               yum install -y https://dev.mysql.com/get/mysql57-community-release-el7-11.noarch.rpm
-              amazon-linux-extras enable postgresql12 && yum clean metadata && sudo yum install -y postgresql-contrib postgresql libpq-devel mysql-community-client
+              amazon-linux-extras enable postgresql14 && yum clean metadata && sudo yum install -y postgresql-contrib postgresql libpq-devel mysql-community-client
               until git clone https://github.com/aws-quickstart/quickstart-linux-utilities.git ; do echo "Retrying"; done
               
               cd /quickstart-linux-utilities;
