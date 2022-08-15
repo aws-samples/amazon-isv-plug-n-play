@@ -55,22 +55,21 @@ Parameters:
   DBEngineVersion:
     Description: 'Select Database Engine Version'
     Type: String
-    Default: 13.6
-    AllowedValues: ['11.13', '12.8', '13.6']
+    Default: 14.3
+    AllowedValues: ['11.13', '12.8', '13.6', '14.3']
      
   DBInstanceClass:
     Description: 'Database Instance Class'
     Type: String
-    Default: db.r5.large
+    Default: db.r6g.large
     AllowedValues: 
-      - db.r5.large 
-      - db.r5.xlarge
-      - db.r5.2xlarge
-      - db.r5.4xlarge
-      - db.r5.8xlarge
-      - db.r5.12xlarge
-      - db.r5.16xlarge
-      - db.r5.24xlarge
+      - db.r6g.large 
+      - db.r6g.xlarge
+      - db.r6g.2xlarge
+      - db.r6g.4xlarge
+      - db.r6g.8xlarge
+      - db.r6g.12xlarge
+      - db.r6g.16xlarge
 
   DBAllocatedStorage:
     Description: 'The allocated storage size, specified in GB'
@@ -207,6 +206,8 @@ Mappings:
       "family": "postgres12"
     "13.6":
       "family": "postgres13"
+    "14.3":
+      "family": "postgres14"
 
 ###############################################################################
 # Conditions
@@ -252,6 +253,7 @@ Resources:
   DBSNSTopic:
     Type: AWS::SNS::Topic
     Properties:
+      KmsMasterKeyId: 'alias/aws/sns'
       Subscription:
       - Endpoint: !Ref NotificationList
         Protocol: email
@@ -324,43 +326,6 @@ Resources:
         statement_timeout: 7200000
         rds.force_ssl: 1
         search_path: '"$user",public'
-
-  RDSPGKMSCMK:
-    Type: 'AWS::KMS::Key'
-    DeletionPolicy: Retain
-    Properties:
-      KeyPolicy:
-        Version: '2012-10-17'
-        Statement:
-        - Effect: Allow
-          Principal:
-            AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
-          Action: 'kms:*'
-          Resource: '*'
-        - Effect: Allow
-          Principal:
-            AWS: '*'
-          Action:
-          - 'kms:Encrypt'
-          - 'kms:Decrypt'
-          - 'kms:ReEncrypt*'
-          - 'kms:GenerateDataKey*'
-          - 'kms:CreateGrant'
-          - 'kms:ListGrants'
-          - 'kms:DescribeKey'
-          Resource: '*'
-          Condition:
-            StringEquals:
-              'kms:CallerAccount': !Ref 'AWS::AccountId'
-              'kms:ViaService': !Sub 'rds.${AWS::Region}.amazonaws.com'
-
-  RDSPGKMSCMKAlias:
-    Type: 'AWS::KMS::Alias'
-    DeletionPolicy: Retain
-    DependsOn: DBInstance
-    Properties:
-      AliasName: !Sub 'alias/${DBInstance}'
-      TargetKeyId: !Ref RDSPGKMSCMK
 
   RDSPGMasterSecret:
     Condition: IsNotUseDBSnapshot
@@ -437,7 +402,7 @@ Resources:
       Engine: postgres
       EngineVersion: !Ref DBEngineVersion
       Iops: 1000
-      KmsKeyId: !If [IsNotUseDBSnapshot, !Ref RDSPGKMSCMK, !Ref 'AWS::NoValue']
+      #KmsKeyId: !If [IsNotUseDBSnapshot, !Ref RDSPGKMSCMK, !Ref 'AWS::NoValue']
       MaxAllocatedStorage: 500 # Iops (1,000) * .5 = 500
       MasterUsername:
         !If [IsUseDBSnapshot, !Ref "AWS::NoValue", !Join ['', ['{{resolve:secretsmanager:', !Ref RDSPGMasterSecret, ':SecretString:username}}' ]]]
@@ -446,7 +411,7 @@ Resources:
       MonitoringInterval: !If [IsProd, 1, 0]
       MonitoringRoleArn: !If [IsProd, !GetAtt MonitoringIAMRole.Arn, !Ref "AWS::NoValue"]
       MultiAZ: !If [DBMultiAZ, true, false]
-      PerformanceInsightsKMSKeyId: !Ref RDSPGKMSCMK
+      #PerformanceInsightsKMSKeyId: !Ref RDSPGKMSCMK
       PerformanceInsightsRetentionPeriod: !If [IsProd, 731, 7]
       Port: !Ref DBPort
       PubliclyAccessible: false

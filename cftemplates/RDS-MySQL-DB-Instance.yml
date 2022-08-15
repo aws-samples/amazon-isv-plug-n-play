@@ -1,4 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::SecretsManager-2020-07-23
 Description: 'CloudFormation Template to create RDS MySQL DB Instance'
 
 ###############################################################################
@@ -54,22 +55,21 @@ Parameters:
   DBEngineVersion:
     Description: 'Select Database Engine Version'
     Type: String
-    Default: '8.0.27'
-    AllowedValues: ['8.0.27', '5.7.36']
+    Default: '8.0.28'
+    AllowedValues: ['8.0.28', '5.7.36']
      
   DBInstanceClass:
     Description: 'Database Instance Class'
     Type: String
-    Default: db.r5.large
+    Default: db.r6g.large
     AllowedValues:
-      - db.r5.large 
-      - db.r5.xlarge
-      - db.r5.2xlarge
-      - db.r5.4xlarge
-      - db.r5.8xlarge
-      - db.r5.12xlarge
-      - db.r5.16xlarge
-      - db.r5.24xlarge
+    - db.r6g.large
+    - db.r6g.xlarge
+    - db.r6g.2xlarge
+    - db.r6g.4xlarge
+    - db.r6g.8xlarge
+    - db.r6g.12xlarge
+    - db.r5.16xlarge
 
   DBAllocatedStorage:
     Description: 'The allocated storage size, specified in GB'
@@ -82,16 +82,6 @@ Parameters:
     Description: Optional. DB Snapshot ID to restore database. Leave this blank if you are not restoring from a snapshot.
     Type: String
     Default: ""
-
-  LambdaBootStrapS3Bucket:
-    Description: Optional. Specify S3 bucket name for e.g. apgbootstrapscripts where Lambda DB Bootstrap Python script is stored.
-    Default: ''
-    Type: String
-
-  LambdaBootStrapS3Key:
-    Description: Optional. Specify S3 key for e.g. lambda/dbbootstrap.zip where Lambda DB Bootstrap Python script is stored.
-    Default: ''
-    Type: String
 
   EnvironmentStage:
     Type: String
@@ -186,8 +176,6 @@ Metadata:
           - DBEngineVersion
           - DBSnapshotName
           - NotificationList
-          - LambdaBootStrapS3Bucket
-          - LambdaBootStrapS3Key
       -
         Label:
           default: 'Networking'
@@ -214,7 +202,7 @@ Mappings:
   DBFamilyMap: 
     "5.7.36":
       "family": "mysql5.7"
-    "8.0.27":
+    "8.0.28":
       "family": "mysql8.0"
 
 ###############################################################################
@@ -233,10 +221,6 @@ Conditions:
   IsServiceOwnersEmailContact: !Not [!Equals [!Ref ServiceOwnersEmailContact, '']]
   IsConfidentiality: !Not [!Equals [!Ref Confidentiality, '']]
   IsCompliance: !Not [!Equals [!Ref Compliance, '']]
-  DoDBBootStrap: !And
-    - !Not [!Equals [!Ref LambdaBootStrapS3Bucket, '']]
-    - !Not [!Equals [!Ref LambdaBootStrapS3Key, '']]
-    - !Not [Condition: IsUseDBSnapshot]
   
 ###############################################################################
 # Resources 
@@ -261,37 +245,11 @@ Resources:
       Path: "/"
       ManagedPolicyArns: 
         - arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole
-
-  DBBootStrapLambdaRole:
-    Type: AWS::IAM::Role
-    Condition: DoDBBootStrap
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: 
-              - lambda.amazonaws.com
-            Action:
-              - sts:AssumeRole
-      Path: "/"
-      ManagedPolicyArns:
-        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole'
-      Policies:
-        - 
-          PolicyName: "secretaccess"
-          PolicyDocument: 
-            Version: "2012-10-17"
-            Statement: 
-              - 
-                Effect: "Allow"
-                Action: "secretsmanager:GetSecretValue"
-                Resource: !Ref RDSMySQLMasterSecret
         
   DBSNSTopic:
     Type: AWS::SNS::Topic
     Properties:
+      KmsMasterKeyId: 'alias/aws/sns'
       Subscription:
       - Endpoint: !Ref NotificationList
         Protocol: email
@@ -352,43 +310,6 @@ Resources:
         log_output: 'FILE'
         innodb_print_all_deadlocks: 1
 
-  RDSMySQLKMSCMK:
-    Type: 'AWS::KMS::Key'
-    DeletionPolicy: Retain
-    Properties:
-      KeyPolicy:
-        Version: '2012-10-17'
-        Statement:
-        - Effect: Allow
-          Principal:
-            AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
-          Action: 'kms:*'
-          Resource: '*'
-        - Effect: Allow
-          Principal:
-            AWS: '*'
-          Action:
-          - 'kms:Encrypt'
-          - 'kms:Decrypt'
-          - 'kms:ReEncrypt*'
-          - 'kms:GenerateDataKey*'
-          - 'kms:CreateGrant'
-          - 'kms:ListGrants'
-          - 'kms:DescribeKey'
-          Resource: '*'
-          Condition:
-            StringEquals:
-              'kms:CallerAccount': !Ref 'AWS::AccountId'
-              'kms:ViaService': !Sub 'rds.${AWS::Region}.amazonaws.com'
-
-  RDSMySQLKMSCMKAlias:
-    Type: 'AWS::KMS::Alias'
-    DeletionPolicy: Retain
-    DependsOn: DBInstance
-    Properties:
-      AliasName: !Sub 'alias/${DBInstance}'
-      TargetKeyId: !Ref RDSMySQLKMSCMK
-
   RDSMySQLMasterSecret:
     Condition: IsNotUseDBSnapshot
     Type: AWS::SecretsManager::Secret
@@ -432,157 +353,21 @@ Resources:
               AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
             Action: "secretsmanager:DeleteSecret"
             Resource: "*"
-  
-  CreateSecretRotationLambdaRole:
-    Condition: IsNotUseDBSnapshot
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: 
-              - lambda.amazonaws.com
-            Action:
-              - sts:AssumeRole
-      Path: "/"
-      ManagedPolicyArns:
-        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole'
-        - 'arn:aws:iam::aws:policy/SecretsManagerReadWrite'
-        - 'arn:aws:iam::aws:policy/IAMFullAccess'
-      Policies:
-        - 
-          PolicyName: "AdditionalPermissions"
-          PolicyDocument: 
-            Version: "2012-10-17"
-            Statement: 
-              - 
-                Effect: "Allow"
-                Action:
-                  - "cloudformation:DescribeStackResources"
-                  - "cloudformation:DeleteStack"
-                Resource: !Sub 'arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/serverlessrepo-${AWS::StackName}-SecretRotationLambdaStack/*'
-              - 
-                Effect: "Allow"
-                Action:
-                  - "lambda:DeleteFunction"
-                  - "lambda:GetFunctionConfiguration"
-                  - "lambda:RemovePermission"
-                Resource: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:SecretsManager-SecretRotationFn-${AWS::StackName}'
-              - 
-                Effect: "Allow"
-                Action:
-                  - "iam:DetachRolePolicy"
-                Resource: !Sub 'arn:aws:iam::${AWS::AccountId}:role/serverlessrepo*'
-  
-  CreateSecretRotationLambdaFn:
-    Condition: IsNotUseDBSnapshot
-    Type: AWS::Lambda::Function
-    DependsOn:
-      - CreateSecretRotationLambdaRole
-    Properties:
-      Code:
-        ZipFile: |
-          import cfnresponse
-          import boto3
-          from botocore.vendored import requests
-          
-          def lambda_handler(event, context):
-              slrepoclient = boto3.client('serverlessrepo')
-              cfclient = boto3.client('cloudformation')
-              lambdaclient = boto3.client('lambda')
-              SecretsManagerEndpoint = event['ResourceProperties']['SecretsManagerEndpoint']
-              SecretRotationLambdaFnName = event['ResourceProperties']['SecretRotationLambdaFnName']
-              SecretRotationLambdaStackName = event['ResourceProperties']['SecretRotationLambdaStackName']
-              SubnetIds = event['ResourceProperties']['SubnetIds']
-              SecretRotationLambdaSG = event['ResourceProperties']['SecretRotationLambdaSG']
-              
-              responseData = {}
-               
-              try: 
-                  if event['RequestType'] == 'Create':
-                      serverlessreporesponse = slrepoclient.create_cloud_formation_change_set(ApplicationId='arn:aws:serverlessrepo:us-east-1:297356227824:applications/SecretsManagerRDSPostgreSQLRotationSingleUser', 
-                      Capabilities=['CAPABILITY_IAM', 'CAPABILITY_RESOURCE_POLICY'],
-                      ParameterOverrides=[
-                          {
-                              'Name': 'endpoint',
-                              'Value': SecretsManagerEndpoint
-                          },
-                          {
-                              'Name': 'functionName',
-                              'Value': SecretRotationLambdaFnName
-                          },
-                          {
-                              'Name': 'excludeCharacters',
-                              'Value': '"@/\;+%'
-                          },
-                      ],
-                      StackName=SecretRotationLambdaStackName)
-                      waiter = cfclient.get_waiter('change_set_create_complete')
-                      waiter.wait(ChangeSetName=serverlessreporesponse['ChangeSetId'],WaiterConfig={'Delay': 10,'MaxAttempts': 60})
-                      
-                      cloudformationresponse = cfclient.execute_change_set(ChangeSetName=serverlessreporesponse['ChangeSetId'])
-                      waiter = cfclient.get_waiter('stack_create_complete')
-                      waiter.wait(StackName=serverlessreporesponse['StackId'],WaiterConfig={'Delay': 10,'MaxAttempts': 60})
-                      
-                      lambdaresponse = lambdaclient.add_permission(FunctionName=SecretRotationLambdaFnName,StatementId='SecretsManagerAccess',Action='lambda:InvokeFunction',Principal='secretsmanager.amazonaws.com')
-                      lambdaresponse = lambdaclient.update_function_configuration(FunctionName=SecretRotationLambdaFnName,VpcConfig={'SubnetIds': SubnetIds,'SecurityGroupIds': SecretRotationLambdaSG})
-                      
-                      responseData['Data'] = "SUCCESS: Secret Rotation Lambda created successfully."
-                      responseData['SecretRotationLambdaARN'] = lambdaclient.get_function(FunctionName=SecretRotationLambdaFnName)['Configuration']['FunctionArn']
-                      
-                      cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, "None")               
-                  elif event['RequestType'] == 'Delete':
-                      SecretRotationLambdaStackName = 'serverlessrepo-' + SecretRotationLambdaStackName
-                      response = cfclient.delete_stack(StackName=SecretRotationLambdaStackName)
-                      waiter = cfclient.get_waiter('stack_delete_complete')
-                      waiter.wait(StackName='string',WaiterConfig={'Delay': 10,'MaxAttempts': 60})
-                      
-                      responseData['Data'] = "SUCCESS: Stack delete complete."
-                      cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, "None")
-                  else:
-                      responseData['Data'] = "{} is unsupported stack operation for this lambda function.".format(event['RequestType'])
-                      cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, "None")
-              except Exception as e:
-                  print(e)
-                  responseData['Data'] = "ERROR: Exception encountered!"
-                  cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, "None")
-      Description: >-
-          Create Secret Rotation Lambda function using AWS Serverless Application Repository with template provided by AWS Secrets Manager
-      Handler: index.lambda_handler
-      MemorySize: 128
-      Role: !GetAtt CreateSecretRotationLambdaRole.Arn
-      Runtime: python3.6
-      Timeout: 120
-      VpcConfig: 
-        SecurityGroupIds: !Split [',', {'Fn::ImportValue': !Sub '${ParentVPCStack}-SecretRotationLambdaSecurityGroup'}]
-        SubnetIds: !Split [',', {'Fn::ImportValue': !Sub '${ParentVPCStack}-SubnetsPrivate'}]
-
-  CreateSecretRotationLambdaFnTrigger:
-    Condition: IsNotUseDBSnapshot
-    Type: Custom::LambdaRMSSecretsManager
-    Version: "1.0"
-    Properties:
-      ServiceToken: !GetAtt 'CreateSecretRotationLambdaFn.Arn'
-      SecretsManagerEndpoint: !Sub 'https://secretsmanager.${AWS::Region}.amazonaws.com'
-      SecretRotationLambdaFnName: !Sub 'SecretsManager-SecretRotationFn-${AWS::StackName}'
-      SecretRotationLambdaStackName: !Sub '${AWS::StackName}-SecretRotationLambdaStack'
-      SubnetIds: !Split [',', {'Fn::ImportValue': !Sub '${ParentVPCStack}-SubnetsPrivate'}]
-      SecretRotationLambdaSG: !Split [',', {'Fn::ImportValue': !Sub '${ParentVPCStack}-SecretRotationLambdaSecurityGroup'}]
-        
-  SecretRotationSchedule:
+    
+  SecretRotationLambda:
     Condition: IsNotUseDBSnapshot
     Type: AWS::SecretsManager::RotationSchedule
-    DependsOn:
+    DependsOn: 
       - SecretRDSMySQLAttachment
       - DBInstance
     Properties:
       SecretId: !Ref RDSMySQLMasterSecret
-      RotationLambdaARN: !GetAtt CreateSecretRotationLambdaFnTrigger.SecretRotationLambdaARN
-      RotationRules:
-        AutomaticallyAfterDays: 30
-        
+      HostedRotationLambda:
+        RotationLambdaName: !Sub 'SecretsManager-SecretRotationFn-${AWS::StackName}'
+        RotationType: 'MySQLSingleUser'
+      RotationRules: 
+        AutomaticallyAfterDays: 30  
+       
   DBInstance:
     Type: AWS::RDS::DBInstance
     Properties:
@@ -600,7 +385,7 @@ Resources:
       Engine: mysql
       EngineVersion: !Ref DBEngineVersion
       Iops: 1000
-      KmsKeyId: !If [IsNotUseDBSnapshot, !Ref RDSMySQLKMSCMK, !Ref 'AWS::NoValue']
+      #KmsKeyId: !If [IsNotUseDBSnapshot, !Ref RDSMySQLKMSCMK, !Ref 'AWS::NoValue']
       MaxAllocatedStorage: 500 # Iops (1,000) * .5 = 500
       MasterUsername:
         !If [IsUseDBSnapshot, !Ref "AWS::NoValue", !Join ['', ['{{resolve:secretsmanager:', !Ref RDSMySQLMasterSecret, ':SecretString:username}}' ]]]
@@ -609,7 +394,7 @@ Resources:
       MonitoringInterval: !If [IsProd, 1, 0]
       MonitoringRoleArn: !If [IsProd, !GetAtt MonitoringIAMRole.Arn, !Ref "AWS::NoValue"]
       MultiAZ: !If [DBMultiAZ, true, false]
-      PerformanceInsightsKMSKeyId: !Ref RDSMySQLKMSCMK
+      #PerformanceInsightsKMSKeyId: !Ref RDSMySQLKMSCMK
       PerformanceInsightsRetentionPeriod: !If [IsProd, 731, 7]
       Port: !Ref DBPort
       PubliclyAccessible: false
@@ -707,44 +492,6 @@ Resources:
       SnsTopicArn: !Ref DBSNSTopic
       SourceIds: [!Ref DBParamGroup]
       SourceType: 'db-parameter-group'
-   
-  DBBootStrapLambdaFn:
-    Condition: DoDBBootStrap
-    Type: AWS::Lambda::Function
-    DependsOn:
-      - DBBootStrapLambdaRole
-    Properties:
-      Code:
-        S3Bucket: !Ref LambdaBootStrapS3Bucket
-        S3Key: !Ref LambdaBootStrapS3Key
-      Description: >-
-          BootStrap newly Created RDS MySQL Database
-      Handler: dbbootstrap.handler
-      MemorySize: 128
-      Role: !GetAtt DBBootStrapLambdaRole.Arn
-      Runtime: python3.6
-      Timeout: 60
-      VpcConfig: 
-        SecurityGroupIds: !Split [',', {'Fn::ImportValue': !Sub '${ParentVPCStack}-SecretRotationLambdaSecurityGroup'}]
-        SubnetIds: !Split [',', {'Fn::ImportValue': !Sub '${ParentVPCStack}-SubnetsPrivate'}]
-      Environment:
-        Variables: 
-          DBHost: !GetAtt 'DBInstance.Endpoint.Address'
-          DBPort: !GetAtt 'DBInstance.Endpoint.Port'
-          DBUser: !Ref DBUsername
-          DBName: !Ref DBName
-          Secret_ARN: !Ref RDSMySQLMasterSecret
-          Region_Name: !Ref "AWS::Region"
-            
-  DBBootStrapLambdaFnTrigger:
-    Condition: DoDBBootStrap
-    Type: Custom::LambdaRMSBootStrap
-    DependsOn:
-      - DBInstance
-      - SecretRotationSchedule
-    Version: "1.0"
-    Properties:
-      ServiceToken: !GetAtt 'DBBootStrapLambdaFn.Arn'
 
 ###############################################################################
 # Outputs 
