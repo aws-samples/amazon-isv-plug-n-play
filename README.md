@@ -2,7 +2,7 @@
 
 Amazon Relational Database Service (Amazon RDS) makes it easy to set up, operate, and scale a relational database in the cloud. Amazon RDS offloads the undifferentiated heavy lifting of keeping the lights on by automating time-consuming administration tasks such as hardware provisioning, database setup, patching, and backups. Amazon RDS frees ISV Startups to focus on higher-level efforts such as performance tuning, schema design, and developing new application features.
 
-The ISV Plug & Play program consists of a packaged bundle that ISV Startups can leverage to accelerate the creation of a new RDS enviornment using baked in best practices.
+The ISV Plug & Play program consists of a packaged bundle that ISV Startups can leverage to accelerate the creation of a new RDS environment using baked in best practices.
 
 ## Architecture overview
 Here is a diagram of our architecture and a brief summary of what you are going to set up.
