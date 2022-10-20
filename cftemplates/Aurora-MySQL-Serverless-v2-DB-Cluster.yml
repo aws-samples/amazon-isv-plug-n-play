@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::SecretsManager-2020-07-23
-Description: 'CloudFormation Template to create RDS Postgresql DB Instance'
+Description: 'CloudFormation Template to create Aurora MySQL Cluster DB Instance'
 
 ###############################################################################
 # Parameters
@@ -28,7 +28,7 @@ Parameters:
     Default: ""
 
   DBName:
-    Description: 'Database Name - must start with a letter. Only numbers, letters, and _ accepted. max length 64 characters'
+    Description: 'Database Name - must start with a letter. Only numbers, letters, and _ accepted. max length 64 characters.'
     Type: String
     MinLength: '1'
     MaxLength: '64'
@@ -38,9 +38,9 @@ Parameters:
   DBPort:
     Description: TCP/IP Port for the Database Instance
     Type: Number
-    Default: 5432
-    ConstraintDescription: 'Must be in the range [1115-65535]'
-    MinValue: 1115
+    Default: 3306
+    ConstraintDescription: 'Must be in the range [1150-65535]'
+    MinValue: 1150
     MaxValue: 65535
 
   DBUsername:
@@ -55,28 +55,21 @@ Parameters:
   DBEngineVersion:
     Description: 'Select Database Engine Version'
     Type: String
-    Default: 14.4
-    AllowedValues: ['11.16', '12.11', '13.7', '14.4']
-
-  DBInstanceClass:
-    Description: 'Database Instance Class'
-    Type: String
-    Default: db.r6g.large
+    Default: 'Aurora-MySQL8.0.23'
     AllowedValues:
-      - db.r6g.large
-      - db.r6g.xlarge
-      - db.r6g.2xlarge
-      - db.r6g.4xlarge
-      - db.r6g.8xlarge
-      - db.r6g.12xlarge
-      - db.r6g.16xlarge
+      - 'Aurora-MySQL8.0.23'
 
-  DBAllocatedStorage:
-    Description: 'The allocated storage size, specified in GB'
-    Type: Number
-    Default: 100
-    MinValue: 5
-    MaxValue: 16384
+  MinCapacity:
+    Description: 'Enter minimum Aurora Capacity Units (ACUs). 1 ACU provides 2 GiB of memory and corresponding compute and networking. Valid ranges are from 0.5 to 128 in increments of 0.5'
+    Type: String
+    AllowedPattern: ([0-9]?(\.(0|5))?|[1-8][0-9](\.(0|5))?|9[0-9]|1[01][0-9](\.(0|5))?|12[0-7](\.(0|5))?|128)
+    ConstraintDescription: 'Only values from 0.5 to 128, in increments of 0.5'
+
+  MaxCapacity:
+    Description: 'Enter maximum Aurora Capacity Units (ACUs). 1 ACU provides 2 GiB of memory and corresponding compute and networking. Valid ranges are from 1 to 128 in increments of 0.5'
+    Type: String
+    AllowedPattern: ([1-9]?(\.(0|5))?|[1-8][0-9](\.(0|5))?|9[0-9]|1[01][0-9](\.(0|5))?|12[0-7](\.(0|5))?|128)
+    ConstraintDescription: 'Only values from 1 to 128, in increments of 0.5'
 
   DBSnapshotName:
     Description: 'Optional. DB Snapshot ID to restore database. Leave this blank if you are not restoring from a snapshot.'
@@ -169,10 +162,10 @@ Metadata:
           default: 'DB Parameters'
         Parameters:
           - DBName
+          - MinCapacity
+          - MaxCapacity
           - DBPort
           - DBUsername
-          - DBInstanceClass
-          - DBAllocatedStorage
           - DBEngineVersion
           - DBSnapshotName
           - NotificationList
@@ -200,14 +193,12 @@ Metadata:
 
 Mappings:
   DBFamilyMap:
-    "11.16":
-      "family": "postgres11"
-    "12.11":
-      "family": "postgres12"
-    "13.7":
-      "family": "postgres13"
-    "14.4":
-      "family": "postgres14"
+    "Aurora-MySQL8.0.23":
+      "family": "aurora-mysql8.0"
+
+  DBEngineVersionMap:
+    "Aurora-MySQL8.0.23":
+      "engineversion": "8.0.mysql_aurora.3.02.0"
 
 ###############################################################################
 # Conditions
@@ -217,7 +208,7 @@ Conditions:
   IsUseDBSnapshot: !Not [!Equals [!Ref DBSnapshotName, ""]]
   IsNotUseDBSnapshot: !Not [Condition: IsUseDBSnapshot]
   IsProd: !Equals [!Ref EnvironmentStage, 'prod']
-  DBMultiAZ: !Or [!Equals [!Ref EnvironmentStage, 'pre-prod'], Condition: IsProd]
+  IsReplica: !Or [!Equals [!Ref EnvironmentStage, 'pre-prod'], Condition: IsProd]
   IsDMS: !Not [!Equals [!Ref ParentDMSStack, '']]
   IsApplication: !Not [!Equals [!Ref Application, '']]
   IsApplicationVersion: !Not [!Equals [!Ref ApplicationVersion, '']]
@@ -264,7 +255,7 @@ Resources:
       DBSubnetGroupDescription: !Ref 'AWS::StackName'
       SubnetIds: !Split [',', {'Fn::ImportValue': !Sub '${ParentVPCStack}-SubnetsPrivate'}]
 
-  InstanceSecurityGroup:
+  ClusterSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
     Properties:
       GroupDescription: !Ref 'AWS::StackName'
@@ -282,64 +273,61 @@ Resources:
       VpcId: {'Fn::ImportValue': !Sub '${ParentVPCStack}-VPC'}
       Tags:
       - Key: Name
-        Value: !Sub '${AWS::StackName}-InstanceSecurityGroup'
+        Value: !Sub '${AWS::StackName}-AuroraClusterSecurityGroup'
 
-  InstanceSecurityGroupIngress:
+  ClusterSecurityGroupIngress:
     Type: 'AWS::EC2::SecurityGroupIngress'
     Properties:
-      GroupId: !GetAtt 'InstanceSecurityGroup.GroupId'
+      GroupId: !GetAtt 'ClusterSecurityGroup.GroupId'
       IpProtocol: -1
-      SourceSecurityGroupId: !Ref InstanceSecurityGroup
+      SourceSecurityGroupId: !Ref ClusterSecurityGroup
       Description: 'Self Reference'
 
-  InstanceSecurityGroupIngressDMS:
+  ClusterSecurityGroupIngressDMS:
     Condition: IsDMS
     Type: 'AWS::EC2::SecurityGroupIngress'
     Properties:
-      GroupId: !GetAtt 'InstanceSecurityGroup.GroupId'
+      GroupId: !GetAtt 'ClusterSecurityGroup.GroupId'
       IpProtocol: tcp
       FromPort: !Ref DBPort
       ToPort: !Ref DBPort
       SourceSecurityGroupId: {'Fn::ImportValue': !Sub '${ParentDMSStack}-DMSSecurityGroupID'}
       Description: 'Access to DMS Security Group'
 
+  RDSDBClusterParameterGroup:
+    Type: AWS::RDS::DBClusterParameterGroup
+    Properties:
+      Description: !Join [ "- ", [ "Aurora MySQL Cluster Parameter Group for Cloudformation Stack ", !Ref DBName ] ]
+      Family: !FindInMap [DBFamilyMap, !Ref DBEngineVersion, "family"]
+      Parameters:
+        time_zone: UTC
+        server_audit_logging: 1
+        server_audit_events: 'QUERY_DCL,QUERY_DDL,CONNECT'
+
   DBParamGroup:
     Type: AWS::RDS::DBParameterGroup
     Properties:
-      Description: !Join [ "- ", [ "RDS PG Database Instance Parameter Group for Cloudformation Stack ", !Ref DBName ] ]
+      Description: !Join [ "- ", [ "Aurora MySQL Database Instance Parameter Group for Cloudformation Stack ", !Ref DBName ] ]
       Family: !FindInMap [DBFamilyMap, !Ref DBEngineVersion, "family"]
       Parameters:
-        shared_preload_libraries: auto_explain,pg_stat_statements,pg_hint_plan,pgaudit
-        log_statement: "ddl"
-        log_connections: 1
-        log_disconnections: 1
-        log_lock_waits: 1
-        log_min_duration_statement: 5000
-        auto_explain.log_min_duration: 5000
-        auto_explain.log_verbose: 1
-        log_rotation_age: 1440
-        log_rotation_size: 102400
-        rds.log_retention_period: 10080
-        random_page_cost: 1
-        track_activity_query_size: 16384
-        idle_in_transaction_session_timeout: 7200000
-        statement_timeout: 7200000
-        rds.force_ssl: 1
-        search_path: '"$user",public'
+        slow_query_log: 1
+        long_query_time: 5
+        log_output: 'FILE'
+        innodb_print_all_deadlocks: 1
 
-  RDSPGMasterSecret:
+  AuroraMasterSecret:
     Condition: IsNotUseDBSnapshot
     Type: AWS::SecretsManager::Secret
     Properties:
-      Name: !Join ['/', [!Ref EnvironmentStage, 'rds-pg', !Ref 'AWS::StackName']]
-      Description: !Join ['', ['RDS PostgreSQL Master User Secret ', 'for CloudFormation Stack ', !Ref 'AWS::StackName']]
+      Name: !Join ['/', [!Ref EnvironmentStage, 'aurora-mysql', !Ref 'AWS::StackName']]
+      Description: !Join ['', ['Aurora MySQL Master User Secret ', 'for CloudFormation Stack ', !Ref 'AWS::StackName']]
       Tags:
         -
           Key: EnvironmentStage
           Value: !Ref EnvironmentStage
         -
           Key: DatabaseEngine
-          Value: 'RDS PostgreSQL'
+          Value: 'Aurora MySQL'
         -
           Key: StackID
           Value: !Ref 'AWS::StackId'
@@ -347,20 +335,21 @@ Resources:
         SecretStringTemplate: !Join ['', ['{"username": "', !Ref DBUsername, '"}']]
         GenerateStringKey: "password"
         ExcludeCharacters: '"@/\;+%'
+        PasswordLength: 32
 
-  SecretRDSPGAttachment:
+  SecretAuroraClusterAttachment:
     Condition: IsNotUseDBSnapshot
     Type: AWS::SecretsManager::SecretTargetAttachment
     Properties:
-      SecretId: !Ref RDSPGMasterSecret
-      TargetId: !Ref DBInstance
-      TargetType: AWS::RDS::DBInstance
+      SecretId: !Ref AuroraMasterSecret
+      TargetId: !Ref AuroraDBCluster
+      TargetType: AWS::RDS::DBCluster
 
-  SecretResourcePolicy:
+  AuroraSecretResourcePolicy:
     Condition: IsNotUseDBSnapshot
     Type: AWS::SecretsManager::ResourcePolicy
     Properties:
-      SecretId: !Ref RDSPGMasterSecret
+      SecretId: !Ref AuroraMasterSecret
       ResourcePolicy:
         Version: "2012-10-17"
         Statement:
@@ -375,48 +364,42 @@ Resources:
     Condition: IsNotUseDBSnapshot
     Type: AWS::SecretsManager::RotationSchedule
     DependsOn:
-      - SecretRDSPGAttachment
-      - DBInstance
+      - SecretAuroraClusterAttachment
+      - AuroraDBFirstInstance
     Properties:
-      SecretId: !Ref RDSPGMasterSecret
+      SecretId: !Ref AuroraMasterSecret
       HostedRotationLambda:
         RotationLambdaName: !Sub 'SecretsManager-SecretRotationFn-${AWS::StackName}'
-        RotationType: 'PostgreSQLSingleUser'
+        RotationType: 'MySQLSingleUser'
       RotationRules:
         AutomaticallyAfterDays: 30
 
-  DBInstance:
-    Type: AWS::RDS::DBInstance
+  AuroraDBCluster:
+    Type: AWS::RDS::DBCluster
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
     Properties:
-      AllocatedStorage: !If [IsUseDBSnapshot, !Ref 'AWS::NoValue', !Ref DBAllocatedStorage]
-      AllowMajorVersionUpgrade: false
-      AutoMinorVersionUpgrade: !If [IsProd, 'false', 'true']
-      BackupRetentionPeriod: !If [IsProd, 35, 7]
-      CopyTagsToSnapshot: true
-      DBInstanceClass: !Ref DBInstanceClass
-      DBName: !If [IsUseDBSnapshot, !Ref "AWS::NoValue", !Ref DBName]
-      DBParameterGroupName: !Ref DBParamGroup
-      DBSubnetGroupName: !Ref DBSubnetGroup
-      EnableIAMDatabaseAuthentication: true
-      EnablePerformanceInsights: true
-      Engine: postgres
-      EngineVersion: !Ref DBEngineVersion
-      Iops: 1000
-      #KmsKeyId: !If [IsNotUseDBSnapshot, !Ref RDSPGKMSCMK, !Ref 'AWS::NoValue']
-      MaxAllocatedStorage: 500 # Iops (1,000) * .5 = 500
-      MasterUsername:
-        !If [IsUseDBSnapshot, !Ref "AWS::NoValue", !Join ['', ['{{resolve:secretsmanager:', !Ref RDSPGMasterSecret, ':SecretString:username}}' ]]]
-      MasterUserPassword:
-        !If [IsUseDBSnapshot, !Ref "AWS::NoValue", !Join ['', ['{{resolve:secretsmanager:', !Ref RDSPGMasterSecret, ':SecretString:password}}' ]]]
-      MonitoringInterval: !If [IsProd, 1, 0]
-      MonitoringRoleArn: !If [IsProd, !GetAtt MonitoringIAMRole.Arn, !Ref "AWS::NoValue"]
-      MultiAZ: !If [DBMultiAZ, true, false]
-      #PerformanceInsightsKMSKeyId: !Ref RDSPGKMSCMK
-      PerformanceInsightsRetentionPeriod: !If [IsProd, 731, 7]
+      Engine: aurora-mysql
+      #EngineVersion: 8.0.mysql_aurora.3.02.0
+      EngineVersion: !FindInMap [DBEngineVersionMap, !Ref DBEngineVersion, "engineversion"]
+      DatabaseName: !If [IsUseDBSnapshot, !Ref "AWS::NoValue", !Ref DBName]
+      ServerlessV2ScalingConfiguration:
+        MinCapacity: !Ref MinCapacity
+        MaxCapacity: !Ref MaxCapacity
       Port: !Ref DBPort
-      PubliclyAccessible: false
+      MasterUsername:
+        !If [IsUseDBSnapshot, !Ref "AWS::NoValue", !Join ['', ['{{resolve:secretsmanager:', !Ref AuroraMasterSecret, ':SecretString:username}}' ]]]
+      MasterUserPassword:
+        !If [IsUseDBSnapshot, !Ref "AWS::NoValue", !Join ['', ['{{resolve:secretsmanager:', !Ref AuroraMasterSecret, ':SecretString:password}}' ]]]
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VpcSecurityGroupIds:
+      - !Ref ClusterSecurityGroup
+      BackupRetentionPeriod: !If [IsProd, 35, 7]
+      DBClusterParameterGroupName: !Ref RDSDBClusterParameterGroup
+      SnapshotIdentifier: !If [IsUseDBSnapshot, !Ref DBSnapshotName, !Ref "AWS::NoValue"]
       StorageEncrypted:  !If [IsUseDBSnapshot, !Ref "AWS::NoValue", true]
-      StorageType: io1
+      #KmsKeyId: !If [IsNotUseDBSnapshot, !Ref AuroraKMSCMK, !Ref 'AWS::NoValue']
+      EnableIAMDatabaseAuthentication: true
       Tags:
         -
           Key: EnvironmentStage
@@ -439,8 +422,89 @@ Resources:
         -
           Key: Compliance
           Value: !If [IsCompliance, !Ref Compliance, !Ref "AWS::NoValue"]
-      VPCSecurityGroups:
-        - !Ref InstanceSecurityGroup
+
+  AuroraDBFirstInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      CopyTagsToSnapshot: true
+      DBClusterIdentifier: !Ref AuroraDBCluster
+      DBInstanceClass: db.serverless
+      Engine: aurora-mysql
+      DBParameterGroupName:
+        Ref: DBParamGroup
+      MonitoringInterval: !If [IsProd, 1, 0]
+      MonitoringRoleArn: !If [IsProd, !GetAtt MonitoringIAMRole.Arn, !Ref "AWS::NoValue"]
+      AutoMinorVersionUpgrade: !If [IsProd, 'false', 'true']
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      PubliclyAccessible: false
+      EnablePerformanceInsights: true
+      #PerformanceInsightsKMSKeyId: !Ref AuroraKMSCMK
+      PerformanceInsightsRetentionPeriod: !If [IsProd, 731, 7]
+      Tags:
+        -
+          Key: EnvironmentStage
+          Value: !Ref EnvironmentStage
+        -
+          Key: Application
+          Value: !If [IsApplication, !Ref Application, !Ref "AWS::NoValue"]
+        -
+          Key: ApplicationVersion
+          Value: !If [IsApplicationVersion, !Ref ApplicationVersion, !Ref "AWS::NoValue"]
+        -
+          Key: ProjectCostCenter
+          Value: !If [IsProjectCostCenter, !Ref ProjectCostCenter, !Ref "AWS::NoValue"]
+        -
+          Key: ServiceOwnersEmailContact
+          Value: !If [IsServiceOwnersEmailContact, !Ref ServiceOwnersEmailContact, !Ref "AWS::NoValue"]
+        -
+          Key: Confidentiality
+          Value: !If [IsConfidentiality, !Ref Confidentiality, !Ref "AWS::NoValue"]
+        -
+          Key: Compliance
+          Value: !If [IsCompliance, !Ref Compliance, !Ref "AWS::NoValue"]
+
+  AuroraDBSecondInstance:
+    Condition: IsReplica
+    Type: AWS::RDS::DBInstance
+    DependsOn:
+      - AuroraDBFirstInstance
+    Properties:
+      CopyTagsToSnapshot: true
+      DBInstanceClass: db.serverless
+      DBClusterIdentifier: !Ref AuroraDBCluster
+      Engine: aurora-mysql
+      DBParameterGroupName:
+        Ref: DBParamGroup
+      MonitoringInterval: !If [IsProd, 1, 0]
+      MonitoringRoleArn: !If [IsProd, !GetAtt MonitoringIAMRole.Arn, !Ref "AWS::NoValue"]
+      AutoMinorVersionUpgrade: !If [IsProd, 'false', 'true']
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      PubliclyAccessible: false
+      EnablePerformanceInsights: true
+      #PerformanceInsightsKMSKeyId: !Ref AuroraKMSCMK
+      PerformanceInsightsRetentionPeriod: !If [IsProd, 731, 7]
+      Tags:
+        -
+          Key: EnvironmentStage
+          Value: !Ref EnvironmentStage
+        -
+          Key: Application
+          Value: !If [IsApplication, !Ref Application, !Ref "AWS::NoValue"]
+        -
+          Key: ApplicationVersion
+          Value: !If [IsApplicationVersion, !Ref ApplicationVersion, !Ref "AWS::NoValue"]
+        -
+          Key: ProjectCostCenter
+          Value: !If [IsProjectCostCenter, !Ref ProjectCostCenter, !Ref "AWS::NoValue"]
+        -
+          Key: ServiceOwnersEmailContact
+          Value: !If [IsServiceOwnersEmailContact, !Ref ServiceOwnersEmailContact, !Ref "AWS::NoValue"]
+        -
+          Key: Confidentiality
+          Value: !If [IsConfidentiality, !Ref Confidentiality, !Ref "AWS::NoValue"]
+        -
+          Key: Compliance
+          Value: !If [IsCompliance, !Ref Compliance, !Ref "AWS::NoValue"]
 
   CPUUtilizationAlarm1:
     Type: "AWS::CloudWatch::Alarm"
@@ -452,7 +516,7 @@ Resources:
       Dimensions:
       - Name: DBInstanceIdentifier
         Value:
-          Ref: DBInstance
+          Ref: AuroraDBFirstInstance
       MetricName: CPUUtilization
       Statistic: Maximum
       Namespace: 'AWS/RDS'
@@ -463,47 +527,38 @@ Resources:
       EvaluationPeriods: '5'
       TreatMissingData: 'notBreaching'
 
-  MaxUsedTxIDsAlarm1:
+  CPUUtilizationAlarm2:
+    Condition: IsReplica
     Type: "AWS::CloudWatch::Alarm"
     Properties:
       ActionsEnabled: true
       AlarmActions:
       - Ref: DBSNSTopic
-      AlarmDescription: 'Maximum Used Transaction IDs'
+      AlarmDescription: 'CPU_Utilization'
       Dimensions:
       - Name: DBInstanceIdentifier
         Value:
-          Ref: DBInstance
-      MetricName: 'MaximumUsedTransactionIDs'
-      Statistic: Average
+          Ref: AuroraDBSecondInstance
+      MetricName: CPUUtilization
+      Statistic: Maximum
       Namespace: 'AWS/RDS'
-      Threshold: '600000000'
-      Unit: Count
+      Threshold: '80'
+      Unit: Percent
       ComparisonOperator: 'GreaterThanOrEqualToThreshold'
       Period: '60'
       EvaluationPeriods: '5'
       TreatMissingData: 'notBreaching'
 
-  FreeLocalStorageAlarm1:
-    Type: "AWS::CloudWatch::Alarm"
+  DatabaseClusterEventSubscription:
+    Type: 'AWS::RDS::EventSubscription'
     Properties:
-      ActionsEnabled: true
-      AlarmActions:
-      - Ref: DBSNSTopic
-      AlarmDescription: 'Free Local Storage'
-      Dimensions:
-      - Name: DBInstanceIdentifier
-        Value:
-          Ref: DBInstance
-      MetricName: 'FreeLocalStorage'
-      Statistic: Average
-      Namespace: 'AWS/RDS'
-      Threshold: '5368709120'
-      Unit: Bytes
-      ComparisonOperator: 'LessThanOrEqualToThreshold'
-      Period: '60'
-      EvaluationPeriods: '5'
-      TreatMissingData: 'notBreaching'
+      EventCategories:
+      - failover
+      - failure
+      - notification
+      SnsTopicArn: !Ref DBSNSTopic
+      SourceIds: [!Ref AuroraDBCluster]
+      SourceType: 'db-cluster'
 
   DatabaseInstanceEventSubscription:
     Type: 'AWS::RDS::EventSubscription'
@@ -519,7 +574,8 @@ Resources:
       - recovery
       SnsTopicArn: !Ref DBSNSTopic
       SourceIds:
-      - !Ref DBInstance
+      - !Ref AuroraDBFirstInstance
+      - !If [IsReplica, !Ref AuroraDBSecondInstance, !Ref "AWS::NoValue"]
       SourceType: 'db-instance'
 
   DBParameterGroupEventSubscription:
@@ -536,27 +592,30 @@ Resources:
 ###############################################################################
 
 Outputs:
-  Endpoint:
-    Description: 'The connection endpoint for the database'
-    Value: !GetAtt 'DBInstance.Endpoint.Address'
+  ClusterEndpoint:
+    Description: 'Aurora Cluster/Writer Endpoint'
+    Value: !GetAtt 'AuroraDBCluster.Endpoint.Address'
+  ReaderEndpoint:
+    Description: 'Aurora Reader Endpoint'
+    Value: !GetAtt 'AuroraDBCluster.ReadEndpoint.Address'
   Port:
-    Description: 'Endpoint Port'
-    Value: !GetAtt 'DBInstance.Endpoint.Port'
+    Description: 'Aurora Endpoint Port'
+    Value: !GetAtt 'AuroraDBCluster.Endpoint.Port'
   DBUsername:
     Description: 'Database admin username'
     Value: !Ref DBUsername
   DBName:
     Description: 'Database Name'
     Value: !Ref DBName
-  PSQLCommandLine:
-    Description: PSQL Command Line
+  MySQLCommandLine:
+    Description: MySQL Command Line
     Value: !Join
              - ''
-             - - 'psql --host='
-               - !GetAtt 'DBInstance.Endpoint.Address'
-               - ' --port='
-               - !GetAtt 'DBInstance.Endpoint.Port'
-               - ' --username='
+             - - 'mysql -h '
+               - !GetAtt 'AuroraDBCluster.Endpoint.Address'
+               - ' -P '
+               - !GetAtt 'AuroraDBCluster.Endpoint.Port'
+               - ' -u '
                - !Ref DBUsername
-               - ' --dbname='
+               - ' -p '
                - !Ref DBName
